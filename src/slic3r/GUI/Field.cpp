@@ -522,10 +522,9 @@ void Field::get_value_by_opt_type(wxString& str, const bool check_value/* = true
                         wxString y_str = _point.GetNextToken();
                         if (y_str.ToDouble(&y) && !_point.HasMoreTokens()) {
                             if (m_opt_id == "bed_exclude_area") {
-                                if (0 <= x &&  0 <= y) {
-                                    out_values.push_back(Vec2d(x, y));
-                                    continue;
-                                }
+                                // Allow negative coordinates for bed exclude area to support complex geometries
+                                out_values.push_back(Vec2d(x, y));
+                                continue;
                             }
                             else if (m_opt_id == "printable_area") {
                                 if (0 <= x && x <= 1000 && 0 <= y && y <= 1000) {
