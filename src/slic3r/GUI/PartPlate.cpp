@@ -2075,24 +2075,23 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
 	else
 	if (plate_box.contains(instance_box))
 	{
-		if (m_exclude_bounding_box.size() > 0)
+		// Check collision with exclude area using precise polygon intersection
+		ExPolygon exclude_polygon = get_exclude_polygon();
+		if (!exclude_polygon.empty())
 		{
 			Polygon hull = instance->convex_hull_2d();
-			int index;
-			for (index = 0; index < m_exclude_bounding_box.size(); index ++)
+			// Use precise polygon intersection instead of bounding box approximation
+			Slic3r::Polygons intersection_result = Slic3r::intersection({ hull }, { exclude_polygon.contour });
+			if (intersection_result.empty())
 			{
-				Polygon p = m_exclude_bounding_box[index].polygon(true);  // instance convex hull is scaled, so we need to scale here
-				if (intersection({ p }, { hull }).empty() == false)
-				//if (m_exclude_bounding_box[index].intersects(instance_box))
-				{
-					break;
-				}
+				outside = false;  // No collision with exclude area
 			}
-			if (index >= m_exclude_bounding_box.size())
-				outside = false;
+			// If intersection is not empty, object is in exclude area (outside = true)
 		}
 		else
-			outside = false;
+		{
+			outside = false;  // No exclude area defined
+		}
 	}
 
 	return outside;

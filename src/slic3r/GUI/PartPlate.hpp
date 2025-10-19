@@ -384,6 +384,16 @@ public:
     }
 
     const std::vector<BoundingBoxf3>& get_exclude_areas() { return m_exclude_bounding_box; }
+    
+    // Get the exclude area points for precise collision detection
+    const Pointfs& get_exclude_area_points() const { return m_exclude_area; }
+    
+    // Generate and return the exclude polygon for precise collision detection
+    ExPolygon get_exclude_polygon() const {
+        ExPolygon exclude_polygon;
+        const_cast<PartPlate*>(this)->generate_exclude_polygon(exclude_polygon);
+        return exclude_polygon;
+    }
 
 
     /*status related functions*/
