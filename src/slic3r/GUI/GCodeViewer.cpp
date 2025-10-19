@@ -2397,31 +2397,46 @@ void GCodeViewer::load_toolpaths(const GCodeProcessorResult& gcode_result, const
 
     //if (wxGetApp().is_editor())
     {
-        //BBS: Precise polygon collision detection for complex exclude areas
+        //BBS: OPTIMIZED - Use bounding box first, then convex hull for exclude area collision
         m_contained_in_bed = build_volume.all_paths_inside(gcode_result, m_paths_bounding_box);
         if (m_contained_in_bed) {
-            // FIXED: Use precise polygon collision detection instead of convex hull
             PartPlateList& partplate_list = wxGetApp().plater()->get_partplate_list();
             PartPlate* plate = partplate_list.get_curr_plate();
+            const std::vector<BoundingBoxf3>& exclude_bboxes = plate->get_exclude_areas();
             
-            // Get the real exclude polygon (not bounding box)
-            ExPolygon exclude_polygon = plate->get_exclude_polygon();
-            
-            if (!exclude_polygon.empty())
+            if (exclude_bboxes.size() > 0)
             {
-                // Create polygon from all toolpath points (without convex hull)
-                Polygon toolpath_polygon;
-                for (const Point& pt : pts) {
-                    toolpath_polygon.append(pt);
+                // Step 1: Quick check - does toolpath bbox intersect exclude area bbox?
+                bool bbox_intersects = false;
+                for (const BoundingBoxf3& exclude_bbox : exclude_bboxes)
+                {
+                    BoundingBoxf3 toolpath_bbox_3d;
+                    toolpath_bbox_3d.min = Vec3d(m_paths_bounding_box.min.x(), m_paths_bounding_box.min.y(), 0);
+                    toolpath_bbox_3d.max = Vec3d(m_paths_bounding_box.max.x(), m_paths_bounding_box.max.y(), 0);
+                    
+                    if (exclude_bbox.intersects(toolpath_bbox_3d))
+                    {
+                        bbox_intersects = true;
+                        break;
+                    }
                 }
                 
-                // Check for intersection between toolpath polygon and exclude area
-                if (!toolpath_polygon.empty()) {
-                    // Use intersection to detect collision precisely
-                    Polygons intersection_result = intersection({ toolpath_polygon }, { exclude_polygon.contour });
-                    if (!intersection_result.empty()) {
-                        m_contained_in_bed = false;
-                        BOOST_LOG_TRIVIAL(info) << "Toolpath intersects with exclude area - precise detection";
+                // Step 2: Only if bbox intersects, do convex hull check (more precise but faster than full polygon)
+                if (bbox_intersects)
+                {
+                    const ExPolygon& exclude_polygon = plate->get_exclude_polygon();
+                    if (!exclude_polygon.empty())
+                    {
+                        // Use convex hull of toolpath (much faster than full polygon intersection)
+                        Polygon convex_hull_2d = Geometry::convex_hull(std::move(pts));
+                        
+                        // Check intersection between convex hull and exclude area
+                        Polygons intersection_result = intersection({ convex_hull_2d }, { exclude_polygon.contour });
+                        if (!intersection_result.empty())
+                        {
+                            m_contained_in_bed = false;
+                            BOOST_LOG_TRIVIAL(info) << "Toolpath (convex hull) intersects with exclude area";
+                        }
                     }
                 }
             }

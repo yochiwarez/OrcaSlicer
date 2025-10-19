@@ -2075,18 +2075,47 @@ bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* boundi
 	else
 	if (plate_box.contains(instance_box))
 	{
-		// Check collision with exclude area using precise polygon intersection
-		ExPolygon exclude_polygon = get_exclude_polygon();
-		if (!exclude_polygon.empty())
+		// OPTIMIZED: Use bounding box pre-filtering before expensive polygon checks
+		if (m_exclude_bounding_box.size() > 0)
 		{
-			Polygon hull = instance->convex_hull_2d();
-			// Use precise polygon intersection instead of bounding box approximation
-			Slic3r::Polygons intersection_result = Slic3r::intersection({ hull }, { exclude_polygon.contour });
-			if (intersection_result.empty())
+			bool intersects_exclude_bbox = false;
+			// First, quick check with bounding boxes
+			for (const BoundingBoxf3& exclude_bbox : m_exclude_bounding_box)
 			{
-				outside = false;  // No collision with exclude area
+				if (exclude_bbox.intersects(instance_box))
+				{
+					intersects_exclude_bbox = true;
+					break;
+				}
 			}
-			// If intersection is not empty, object is in exclude area (outside = true)
+			
+			// Only do expensive polygon check if bounding boxes intersect
+			if (intersects_exclude_bbox)
+			{
+				const ExPolygon& exclude_polygon = get_exclude_polygon();
+				if (!exclude_polygon.empty())
+				{
+					Polygon hull = instance->convex_hull_2d();
+					// Use precise polygon intersection only when bboxes intersect
+					Slic3r::Polygons intersection_result = Slic3r::intersection({ hull }, { exclude_polygon.contour });
+					if (!intersection_result.empty())
+					{
+						outside = true;  // Collision with exclude area
+					}
+					else
+					{
+						outside = false;  // No collision
+					}
+				}
+				else
+				{
+					outside = false;
+				}
+			}
+			else
+			{
+				outside = false;  // No bbox intersection, so no collision
+			}
 		}
 		else
 		{
@@ -2645,6 +2674,9 @@ bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, Ve
 		}*/
 		m_shape = std::move(new_shape);
 		m_exclude_area = std::move(new_exclude_areas);
+		
+		// Invalidate cached exclude polygon when shape/exclude area changes
+		invalidate_exclude_polygon_cache();
 
 		calc_bounding_boxes();
 

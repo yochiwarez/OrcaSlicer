@@ -123,6 +123,8 @@ private:
     BoundingBoxf3 m_extended_bounding_box;
     mutable std::vector<BoundingBoxf3> m_exclude_bounding_box;
     mutable BoundingBoxf3 m_grabber_box;
+    mutable ExPolygon m_cached_exclude_polygon;  // Cache for expensive polygon generation
+    mutable bool m_exclude_polygon_valid = false; // Track if cache is valid
     Transform3d m_grabber_trans_matrix;
     Slic3r::Geometry::Transformation position;
     std::vector<Vec3f> positions;
@@ -388,11 +390,18 @@ public:
     // Get the exclude area points for precise collision detection
     const Pointfs& get_exclude_area_points() const { return m_exclude_area; }
     
-    // Generate and return the exclude polygon for precise collision detection
-    ExPolygon get_exclude_polygon() const {
-        ExPolygon exclude_polygon;
-        const_cast<PartPlate*>(this)->generate_exclude_polygon(exclude_polygon);
-        return exclude_polygon;
+    // Get cached exclude polygon for precise collision detection (optimized)
+    const ExPolygon& get_exclude_polygon() const {
+        if (!m_exclude_polygon_valid) {
+            const_cast<PartPlate*>(this)->generate_exclude_polygon(m_cached_exclude_polygon);
+            m_exclude_polygon_valid = true;
+        }
+        return m_cached_exclude_polygon;
+    }
+    
+    // Invalidate the exclude polygon cache when exclude area changes
+    void invalidate_exclude_polygon_cache() {
+        m_exclude_polygon_valid = false;
     }
 
 
